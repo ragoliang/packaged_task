@@ -14,7 +14,7 @@
 template<typename _Res>
 struct _Result {
 public:
-    _Result() noexcept: m_init(false) {}
+    _Result() noexcept: m_init(false), m_exception(nullptr) {}
 
     ~_Result() {
         if (m_init) {
@@ -46,7 +46,7 @@ private:
     __align_type m_storage;
     bool m_init;
 public:
-    std::string m_exception_str;
+    std::exception_ptr m_exception;
 };
 
 template<typename Res>
@@ -70,10 +70,6 @@ public:
     _Result<Res> &wait() {
         std::unique_lock<std::mutex> __lock(m_mutex);
         m_cond.wait(__lock, [&] { return ready(); });
-
-        if (!m_result->m_exception_str.empty()) {
-            throw std::logic_error(m_result->m_exception_str);
-        }
         return *m_result;
     }
 
@@ -87,6 +83,20 @@ protected:
         {
             std::lock_guard<std::mutex> __lock(m_mutex);
             m_result->set(res);
+        }
+
+        m_cond.notify_all();
+    }
+
+    void set_exception(std::exception_ptr ptr) {
+        if (m_result) {
+            return;
+        }
+        std::unique_ptr<_Result<Res>> _local(new _Result<Res>());
+        std::swap(_local, m_result);
+        {
+            std::lock_guard<std::mutex> __lock(m_mutex);
+            m_result->m_exception = ptr;
         }
 
         m_cond.notify_all();
@@ -135,8 +145,8 @@ public:
     Res get() {
         _Reset reset(*this);
         _Result<Res> &_res = m_state->wait();
-        if (!_res.m_exception_str.empty()) {
-            std::logic_error(_res.m_exception_str);
+        if (_res.m_exception != 0) {
+            std::rethrow_exception(_res.m_exception);
         }
         return std::move(_res.value());
     }
@@ -185,7 +195,11 @@ private:
     virtual void _M_run(_Args... __args) {
         // bound arguments decay so wrap lvalue references
         auto boundfn = std::bind(std::ref(m_impl.m_fn), _S_maybe_wrap_ref(std::forward<_Args>(__args))...);
-        this->set_result(boundfn());
+        try {
+            this->set_result(boundfn());
+        } catch (...) {
+            this->set_exception(std::current_exception());
+        }
     }
 
 private:
