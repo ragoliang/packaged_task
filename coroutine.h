@@ -19,9 +19,8 @@ extern "C" {
 
 class Coroutine {
 private:
-    typedef unsigned long thread_id_t;
     struct _Impl_base;
-    typedef std::shared_ptr <_Impl_base> __shared_base_type;
+    typedef std::shared_ptr<_Impl_base> __shared_base_type;
 
     class Cid {
         st_thread_t _M_thread;
@@ -37,13 +36,11 @@ private:
             return __x._M_thread == __y._M_thread;
         }
 
-        friend bool operator<(Coroutine::Cid __x, Coroutine::Cid __y)
-
-        noexcept { return __x._M_thread < __y._M_thread; }
+        friend bool operator<(Coroutine::Cid __x, Coroutine::Cid __y) noexcept { return __x._M_thread < __y._M_thread; }
 
         template<class _CharT, class _Traits>
-        friend std::basic_ostream <_CharT, _Traits> &
-        operator<<(std::basic_ostream <_CharT, _Traits> &__out, Coroutine::Cid __id) {
+        friend std::basic_ostream<_CharT, _Traits> &
+        operator<<(std::basic_ostream<_CharT, _Traits> &__out, Coroutine::Cid __id) {
             if (__id == Coroutine::Cid())
                 return __out << "thread::id of a non-executing thread";
             else
@@ -63,7 +60,6 @@ private:
     template<typename Callable>
     struct _Impl : public _Impl_base {
         Callable _M_func;
-
         _Impl(Callable &&__f) : _M_func(std::forward<Callable>(__f)) {
         }
 
@@ -76,13 +72,13 @@ private:
     };
 
     template<typename Callable>
-    static std::shared_ptr <_Impl<Callable>> _M_make_routine(Callable &&__f) {
-        return std::make_shared < _Impl < Callable >> (std::forward<Callable>(__f));
+    static std::shared_ptr<_Impl<Callable>> _M_make_routine(Callable &&__f) {
+        return std::make_shared<_Impl< Callable>>(std::forward<Callable>(__f));
     }
 
 public:
+    typedef unsigned long thread_id_t;
     Coroutine() = default;
-
     template<typename Callable, typename...  Args>
     explicit Coroutine(Callable &&__f, Args &&... __args) {
         _M_start_thread(_M_make_routine(std::bind(
@@ -91,25 +87,24 @@ public:
     }
 
     ~Coroutine() {
-        interrupt();
-        // st库中_st_thread_main函数执行完execute_native_thread_routine()后会调用st_thread_exit()
-        join();
+        // 协构的时候，不应该是可以被join状态
+        if (joinable()) {
+            std::terminate();
+        }
     }
 
     Coroutine &operator=(const Coroutine &) = delete;
 
     Coroutine(const Coroutine &r) = delete;
 
-    Coroutine(Coroutine &&__t)
-
-    noexcept {
+    Coroutine(Coroutine &&__t) noexcept {
         swap(__t);
     }
 
-    Coroutine &operator=(Coroutine &&__t)
-
-    noexcept {
-        interrupt();
+    Coroutine &operator=(Coroutine &&__t) noexcept {
+        if (joinable()) {
+            std::terminate();
+        }
         swap(__t);
         return *this;
     }
@@ -127,12 +122,23 @@ public:
     }
 
     void join() {
-        if (!_M_id._M_thread) {
+        if (!joinable()) {
             return;
         }
         st_thread_join(_M_id._M_thread, nullptr);
+        _M_id = Cid();
     }
 
+    void detach() {
+        if (!_M_id._M_thread) {
+            return;
+        }
+        if (_M_id._M_thread == st_thread_self()) {
+            return;
+        }
+        // _M_id._M_thread = nullptr
+        _M_id = Cid();
+    }
 private:
     static void *execute_native_thread_routine(void *__p) {
         Coroutine::_Impl_base *__t = static_cast<Coroutine::_Impl_base *>(__p);
@@ -153,6 +159,13 @@ private:
 
     void swap(Coroutine &__t) {
         std::swap(_M_id, __t._M_id);
+    }
+
+    bool joinable() {
+        if (!_M_id._M_thread) {
+            return false;
+        }
+        return _M_id._M_thread != st_thread_self();
     }
 
 private:
