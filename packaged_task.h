@@ -173,7 +173,11 @@ template<typename _Res, typename... _Args>
 struct _Task_state_base<_Res(_Args...)> : State_base<_Res> {
     virtual ~_Task_state_base() {}
 
-    virtual void _M_run(_Args... __args) = 0;
+    virtual void run(_Args... __args) = 0;
+
+    virtual void break_promise() {
+        this->set_exception(std::make_exception_ptr(std::logic_error("future error")));
+    }
 };
 
 template<typename _Fn, typename _Res, typename... _Args>
@@ -192,7 +196,7 @@ private:
     static typename std::enable_if<!std::is_lvalue_reference<_Tp>::value, _Tp>::type &&
     _S_maybe_wrap_ref(_Tp &&__t) { return std::forward<_Tp>(__t); }
 
-    virtual void _M_run(_Args... __args) {
+    virtual void run(_Args... __args) {
         // bound arguments decay so wrap lvalue references
         auto boundfn = std::bind(std::ref(m_impl.m_fn), _S_maybe_wrap_ref(std::forward<_Args>(__args))...);
         try {
@@ -240,7 +244,11 @@ public:
     explicit PackagedTask(_Fn &&__fn):m_state(__create_task_state<_Res(_ArgTypes...)>(
             std::forward<_Fn>(__fn))) {}
 
-    ~PackagedTask() {}
+    ~PackagedTask() {
+        if (m_state && !m_state.unique()) {
+            m_state->break_promise();
+        }
+    }
 
     PackagedTask(const PackagedTask &) = delete;
 
@@ -255,7 +263,7 @@ public:
 
     // 执行函数
     void operator()(_ArgTypes... __args) {
-        m_state->_M_run(std::forward<_ArgTypes>(__args)...);
+        m_state->run(std::forward<_ArgTypes>(__args)...);
     }
 
     Future<_Res> get_future() { return Future<_Res>(m_state); }
