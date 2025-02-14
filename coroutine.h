@@ -81,7 +81,7 @@ public:
     Coroutine() = default;
     template<typename Callable, typename...  Args>
     explicit Coroutine(Callable &&__f, Args &&... __args) {
-        _M_start_thread(_M_make_routine(std::bind(
+        _M_start_thread(_M_make_routine(std::__bind_simple(
                 std::forward<Callable>(__f),
                 std::forward<Args>(__args)...)));
     }

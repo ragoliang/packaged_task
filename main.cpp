@@ -1,5 +1,8 @@
 #include <iostream>
 #include <cstdio>
+#include <numeric>
+#include <vector>
+#include <thread>
 #include "coroutine.h"
 #include "packaged_task.h"
 using namespace std;
@@ -37,6 +40,27 @@ void test_task()
     cout << "test task done" << endl;
 }
 
+
+void accumulate_func(std::vector<int>::iterator first,
+                std::vector<int>::iterator last,
+                Promise<int> accumulate_promise)
+{
+    int sum = std::accumulate(first, last, 0);
+    accumulate_promise.set_value(sum); // Notify future
+}
+
+void test_promise()
+{
+    std::vector<int> numbers = {1, 2, 3, 4, 5, 6};
+    Promise<int> accumulate_promise;
+    Future<int> accumulate_future = accumulate_promise.get_future();
+    Coroutine cor(accumulate_func, numbers.begin(), numbers.end(),
+                            std::move(accumulate_promise));
+    std::cout<< "accumulate_futures=" << accumulate_future.get() << std::endl;
+    cor.join();
+}
+
+
 int main() {
     if (st_init() < 0) {
         printf("st_init failed");
@@ -46,6 +70,7 @@ int main() {
     printf("init done\n");
 
     test_task();
+    test_promise();
     st_thread_exit(NULL);
     return 0;
 }

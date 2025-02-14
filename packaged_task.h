@@ -74,7 +74,6 @@ public:
         return *m_result;
     }
 
-protected:
     void set_result(const Res &res) {
         if (m_result) {
             return;
@@ -254,5 +253,54 @@ public:
 private:
     void swap(PackagedTask &__other) noexcept { m_state.swap(__other.m_state); }
 };
+
+template<typename Res>
+class Promise {
+    using state_type = std::shared_ptr<State_base<Res>>;
+public:
+    Promise() : m_future(std::make_shared<State_base<Res>>()) {
+    }
+
+    ~Promise() {
+        // 析构前未调用future.get()方法或get()方法未返回结果
+        if (m_future && !m_future.unique()) {
+            m_future->set_exception(std::make_exception_ptr(std::logic_error("future error")));
+        }
+    }
+
+    Promise(const Promise &p) = delete;
+
+    Promise(Promise &&__rhs) noexcept: m_future(std::move(__rhs.m_future)) {
+    }
+
+    Promise &operator=(const Promise &p) = delete;
+
+    Promise &operator=(Promise &&rhs) noexcept
+    {
+        Promise(std::move(rhs)).swap(*this);
+        return *this;
+    }
+
+    void set_value(Res &res) {
+        m_future->set_result(res);
+    }
+
+    void set_exception(std::exception_ptr __p) {
+        m_future->set_exception(__p);
+    }
+
+    Future<Res> get_future() {
+        return Future<Res>(m_future);
+    }
+
+    void swap(Promise& __rhs) noexcept
+    {
+        m_future.swap(__rhs.m_future);
+    }
+
+private:
+    state_type m_future;
+};
+
 
 #endif //PACKEDTASK_PACKAGED_TASK_HPP
