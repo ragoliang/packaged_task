@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <functional>
+#include <chrono>
 #include "lib/st.h"
 
 template<typename _Res>
@@ -74,6 +75,13 @@ public:
         return *m_result;
     }
 
+    int wait_for(int64_t duration) {
+        if (m_result) {
+            return 0;
+        }
+        return st_cond_timedwait(m_cond, duration);
+    }
+
     void set_result(const Res &res) {
         if (m_result) {
             return;
@@ -94,6 +102,12 @@ public:
         m_result->m_exception = ptr;
         st_cond_broadcast(m_cond);
     }
+};
+
+enum class FutureStatus {
+    Ready = 0,
+    Timeout = 1,
+    Deferred = 2,
 };
 
 template<typename Res>
@@ -139,6 +153,17 @@ public:
             std::rethrow_exception(_res.m_exception);
         }
         return std::move(_res.value());
+    }
+
+
+    template<typename _Rep, typename _Period>
+    FutureStatus wait_for(const std::chrono::duration<_Rep, _Period> &duration) {
+        int64_t microseconds = std::chrono::microseconds(duration).count();
+        if (m_state->wait_for(microseconds) == 0) {
+            return FutureStatus::Ready;
+        }
+
+        return FutureStatus::Timeout;
     }
 
 private:
