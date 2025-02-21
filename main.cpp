@@ -45,7 +45,7 @@ void test_task()
 
 void accumulate_func(std::vector<int>::iterator first,
                 std::vector<int>::iterator last,
-                Promise<int> accumulate_promise)
+                Promise<int> &accumulate_promise)
 {
     st_usleep(500*1000);
     int sum = std::accumulate(first, last, 0);
@@ -58,7 +58,7 @@ void test_promise()
     Promise<int> accumulate_promise;
     Future<int> accumulate_future = accumulate_promise.get_future();
     Coroutine cor(accumulate_func, numbers.begin(), numbers.end(),
-                            std::move(accumulate_promise));
+                            std::ref(accumulate_promise));
     std::cout<< "accumulate_futures=" << accumulate_future.get() << std::endl;
     cor.join();
 }
@@ -70,7 +70,7 @@ void test_promise1()
     Promise<int> accumulate_promise;
     Future<int> accumulate_future = accumulate_promise.get_future();
     Coroutine cor(accumulate_func, numbers.begin(), numbers.end(),
-                  std::move(accumulate_promise));
+                  std::ref(accumulate_promise));
 
     time_point tp1 = chrono::steady_clock::now();
     FutureStatus stauts = accumulate_future.wait_for(chrono::seconds(1));
